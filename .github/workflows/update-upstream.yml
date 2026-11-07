@@ -46,7 +46,7 @@ jobs:
 
       - name: Open pull request
         if: steps.refs.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           # PRs opened with GITHUB_TOKEN don't trigger other workflows, so
           # pr.yml would not run. Set UPSTREAM_BUMP_TOKEN (fine-grained PAT
