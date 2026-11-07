@@ -1,0 +1,77 @@
+name: Build PR
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build, test and push PR image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          platforms: linux/amd64
+          tags: garmin-mcp:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          printf 'smoke-token' > "$RUNNER_TEMP/http_token"
+          chmod 644 "$RUNNER_TEMP/http_token"
+
+          # Package imports and both CLIs are on PATH
+          docker run --rm garmin-mcp:test \
+            python -c "import garmin_mcp, garmin_mcp.auth_cli"
+          docker run --rm garmin-mcp:test sh -c "command -v garmin-mcp && command -v garmin-mcp-auth"
+
+          # Runs as non-root
+          test "$(docker run --rm garmin-mcp:test id -u)" = "10001"
+
+          # Entrypoint maps GARMIN_MCP_HTTP_TOKEN_FILE -> GARMIN_MCP_HTTP_TOKEN
+          docker run --rm \
+            -v "$RUNNER_TEMP/http_token:/run/secrets/http_token:ro" \
+            -e GARMIN_MCP_HTTP_TOKEN_FILE=/run/secrets/http_token \
+            garmin-mcp:test \
+            python -c "import os; assert os.environ['GARMIN_MCP_HTTP_TOKEN'] == 'smoke-token'; assert 'GARMIN_MCP_HTTP_TOKEN_FILE' not in os.environ"
+
+          # Entrypoint fails fast on a missing secret file
+          if docker run --rm -e GARMIN_MCP_HTTP_TOKEN_FILE=/nope garmin-mcp:test true; then
+            echo "expected entrypoint to fail on missing secret file" >&2
+            exit 1
+          fi
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/${{ github.repository }}:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
