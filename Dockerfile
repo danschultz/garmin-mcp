@@ -3,7 +3,7 @@
 # Separate stage so Dependabot can track the uv version.
 FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 
 # Upstream commit to build (https://github.com/taxuspt/garmin_mcp).
 # Bumped automatically by .github/workflows/update-upstream.yml.
@@ -23,7 +23,7 @@ RUN echo "garminconnect==${GARMINCONNECT_VERSION}" > /tmp/overrides.txt \
  && uv venv /opt/venv \
  && VIRTUAL_ENV=/opt/venv uv pip install --no-cache --override /tmp/overrides.txt /src
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 ARG GARMIN_MCP_REF
 ARG GARMINCONNECT_VERSION
